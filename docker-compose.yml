@@ -1,0 +1,274 @@
+version: '3.8'
+
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME}
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    _PIP_ADDITIONAL_REQUIREMENTS: kafka-python ray[default]==2.9.0 psycopg2-binary transformers torch nltk vaderSentiment
+  volumes:
+    - ${AIRFLOW_PROJ_DIR}/dags:/opt/airflow/dags
+    - ${AIRFLOW_PROJ_DIR}/logs:/opt/airflow/logs
+    - ${AIRFLOW_PROJ_DIR}/config:/opt/airflow/config
+    - ${AIRFLOW_PROJ_DIR}/plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on: &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
+services:
+  # ==================== PostgreSQL Database ====================
+  postgres:
+    image: postgres:13
+    container_name: mlops-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./sql_scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+    networks:
+      - mlops-network
+
+  # ==================== Zookeeper for Kafka ====================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: mlops-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - ./data/zookeeper:/var/lib/zookeeper/data
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mlops-network
+
+  # ==================== Kafka Broker ====================
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: mlops-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: ${KAFKA_BROKER_ID}
+      KAFKA_ZOOKEEPER_CONNECT: ${KAFKA_ZOOKEEPER_CONNECT}
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    volumes:
+      - ./data/kafka:/var/lib/kafka/data
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - mlops-network
+
+  # ==================== Kafka UI (Optional but helpful) ====================
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: mlops-kafka-ui
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    ports:
+      - "8090:8080"
+    networks:
+      - mlops-network
+
+  # ==================== Airflow Webserver ====================
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: mlops-airflow-webserver
+    command: webserver
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    networks:
+      - mlops-network
+
+  # ==================== Airflow Scheduler ====================
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: mlops-airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    networks:
+      - mlops-network
+
+  # ==================== Airflow Init ====================
+  airflow-init:
+    <<: *airflow-common
+    container_name: mlops-airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /sources/logs /sources/dags /sources/plugins
+        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        exec /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+    user: "0:0"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR}:/sources
+    networks:
+      - mlops-network
+
+  # ==================== Ray Head Node ====================
+  ray-head:
+    image: rayproject/ray:2.9.0-py310
+    container_name: mlops-ray-head
+    command: ray start --head --port=6379 --dashboard-host=0.0.0.0 --dashboard-port=8265 --block
+    ports:
+      - "6379:6379"      # Ray client port
+      - "8265:8265"      # Ray dashboard
+      - "10001:10001"    # Ray serve
+    volumes:
+      - ./ray_scripts:/app
+    environment:
+      RAY_ADDRESS: ray-head:6379
+    healthcheck:
+      test: ["CMD", "ray", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mlops-network
+
+  # ==================== Ray Worker Node 1 ====================
+  ray-worker-1:
+    image: rayproject/ray:2.9.0-py310
+    container_name: mlops-ray-worker-1
+    command: ray start --address=ray-head:6379 --block
+    depends_on:
+      - ray-head
+    volumes:
+      - ./ray_scripts:/app
+    environment:
+      RAY_ADDRESS: ray-head:6379
+    networks:
+      - mlops-network
+
+  # ==================== Ray Worker Node 2 ====================
+  ray-worker-2:
+    image: rayproject/ray:2.9.0-py310
+    container_name: mlops-ray-worker-2
+    command: ray start --address=ray-head:6379 --block
+    depends_on:
+      - ray-head
+    volumes:
+      - ./ray_scripts:/app
+    environment:
+      RAY_ADDRESS: ray-head:6379
+    networks:
+      - mlops-network
+  # ==================== Kafka Producer ====================
+  kafka-producer:
+    build:
+      context: ./kafka_scripts
+      dockerfile: Dockerfile
+    container_name: mlops-kafka-producer
+    command: python producer.py
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC_REVIEWS: review-stream
+      REVIEWS_PER_BATCH: 10
+      BATCH_INTERVAL_SECONDS: 5
+    volumes:
+      - ./kafka_scripts:/app
+    networks:
+      - mlops-network
+    restart: unless-stopped
+
+  # ==================== Kafka Consumer ====================
+  kafka-consumer:
+    build:
+      context: ./kafka_scripts
+      dockerfile: Dockerfile
+    container_name: mlops-kafka-consumer
+    command: python consumer.py
+    depends_on:
+      - kafka
+      - kafka-producer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC_REVIEWS: review-stream
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+    volumes:
+      - ./kafka_scripts:/app
+    networks:
+      - mlops-network
+    restart: unless-stopped
+
+# ==================== Networks ====================
+networks:
+  mlops-network:
+    driver: bridge
+    name: mlops-network
+
+# ==================== Volumes ====================
+volumes:
+  postgres-data:
+  kafka-data:
+  zookeeper-data:

@@ -1,0 +1,51 @@
+{
+    "positive_reviews": [
+      "Absolutely love this product! Best purchase ever.",
+      "Outstanding quality and fast delivery. Highly recommend!",
+      "Exceeded my expectations. Five stars all the way!",
+      "Amazing product, worth every penny. Will buy again!",
+      "Perfect! Exactly what I was looking for.",
+      "Exceptional quality and great customer service.",
+      "Best product in its category. Very satisfied!",
+      "Impressive performance and durability.",
+      "Fantastic product! My family loves it too.",
+      "Great value for money. Couldn't be happier!"
+    ],
+    "neutral_reviews": [
+      "Product is okay, does what it's supposed to do.",
+      "It's decent for the price. Nothing special.",
+      "Average quality, meets basic requirements.",
+      "Works as described, no complaints.",
+      "It's fine. Not great, not terrible.",
+      "Acceptable product, could be better.",
+      "Does the job adequately.",
+      "Standard quality, as expected.",
+      "It's okay, serves its purpose.",
+      "Fair product for the price point."
+    ],
+    "negative_reviews": [
+      "Disappointed with the quality. Not worth the money.",
+      "Broke after two days. Terrible product!",
+      "Would not recommend. Poor quality control.",
+      "Waste of money. Doesn't work as advertised.",
+      "Very unsatisfied. Requesting a refund.",
+      "Cheap materials and bad design.",
+      "Horrible experience. Customer service was unhelpful.",
+      "Product arrived damaged and late.",
+      "Not what I expected. Very disappointed.",
+      "Poor quality, stopped working after a week."
+    ],
+    "product_categories": [
+      "Electronics",
+      "Home & Kitchen",
+      "Books",
+      "Clothing",
+      "Sports & Outdoors",
+      "Beauty & Personal Care",
+      "Toys & Games",
+      "Grocery",
+      "Health & Wellness",
+      "Office Products"
+    ]
+  }
+  
