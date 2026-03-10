@@ -131,7 +131,6 @@ Real-world applications include:
 
 ### High-Level Architecture
 
-```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         MLOps DataOps Pipeline                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -151,11 +150,10 @@ Real-world applications include:
     │   Zookeeper  │           │   Webserver  │       │ Ray Worker 2│       │  CSV Export  │
     │ Coordination │           │   (UI)       │       │             │       │  Visualize   │
     └──────────────┘           └──────────────┘       └─────────────┘       └──────────────┘
-```
+
 
 ### Component Interaction Flow
 
-```
 sequenceDiagram
     participant P as Kafka Producer
     participant K as Kafka Broker
@@ -178,11 +176,10 @@ sequenceDiagram
     A->>D: Store Processed Data
     D->>A: Confirm Storage
     A->>A: Log Metrics
-```
+
 
 ### Container Architecture
 
-```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Docker Host Machine                          │
 │  ┌───────────────────────────────────────────────────────────┐ │
@@ -206,7 +203,7 @@ sequenceDiagram
 │  │                                                            │ │
 │  └───────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
-```
+
 
 ---
 
@@ -231,7 +228,7 @@ sequenceDiagram
 
 ### Supporting Libraries
 
-```
+
 # Data Processing
 pandas==2.1.4           # Data manipulation
 numpy==1.26.2           # Numerical computing
@@ -244,7 +241,6 @@ psycopg2-binary==2.9.9  # PostgreSQL adapter
 # Visualization
 matplotlib==3.8.2       # Plotting
 seaborn==0.13.0         # Statistical visualization
-```
 
 </div>
 
